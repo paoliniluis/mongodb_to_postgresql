@@ -1,0 +1,26 @@
+{
+    "aCollection":
+    {
+        "_id": false,
+        "id": true,
+        "name": true
+    },
+    "anotherCollection":
+    {
+        "_id": false,
+        "id":true,
+        "name":true,
+        "field2":true,
+        "field3":true
+    },
+    "anotherCollection2":
+    {
+        "_id": false,
+        "id":true,
+        "name":true,
+        "field3":true,
+        "field4":true,
+        "field5":true,
+    
+    }
+}

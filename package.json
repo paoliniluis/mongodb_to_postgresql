@@ -1,0 +1,23 @@
+{
+  "name": "mongodb_to_postgresql",
+  "version": "1.0.0",
+  "description": "A simple script that will grab an entire collection and will insert it into a PostgreSQL table",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paoliniluis/mongodb_to_postgresql.git"
+  },
+  "author": "Luis Paolini <paoliniluis@gmail.com> (https://github.com/paoliniluis)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/paoliniluis/mongodb_to_postgresql/issues"
+  },
+  "homepage": "https://github.com/paoliniluis/mongodb_to_postgresql#readme",
+  "dependencies": {
+    "pg":"8.3.3",
+    "mongodb":"3.6.2"
+  }
+}

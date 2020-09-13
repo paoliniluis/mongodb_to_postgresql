@@ -1,0 +1,17 @@
+{
+    "mongo": {
+        "uri":"your-mongodb-connection-url",
+        "cap": 999999
+    },
+    "postgres": {
+        "user": "your-postgresql-user",
+        "host": "your-postgresql-host",
+        "database": "your-postgresql-database",
+        "password": "your-postgresql-password",
+        "port": 5432
+    },
+    "batchType": {
+        "toDisk": "toDisk",
+        "toDB": "toDB"
+    }
+}
