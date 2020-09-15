@@ -47,22 +47,6 @@ function objectToTable (doc) {
 }
 
 /**
- * Gets a Document and returns an array of the values
- *
- * Options:
- *
- *  - `doc` a MongoDB document
- *
- * @param {Object} [doc]
- * @return {Array}
- */
-function objectToValues(doc) {
-    let arrayToReturn = [];
-    Object.keys(doc).forEach(key => arrayToReturn.push(doc[key]))
-    return arrayToReturn;
-}
-
-/**
  * Connects to MongoDB using a config and pre-stablished projections, returns files on disk or insertions in a database
  *
  * Options:
@@ -131,7 +115,7 @@ async function getFromMongo(db, collection, config) {
                 // here we make the prepared statement, with the document keys transformed into columns and the values of the document transformed into a row
                 // we use pg-format to prevent sql-injections in the columns and fields
                 // also, we keep the old tables alive and then we wipe them at the end to prevent downtime
-                let insert = format(`INSERT INTO d_${collection.replace(/-/g,'_')}_new (%s) VALUES (%L)`, Object.keys(objectToInsert), objectToValues(objectToInsert));
+                let insert = format(`INSERT INTO d_${collection.replace(/-/g,'_')}_new (%s) VALUES (%L)`, Object.keys(objectToInsert), Object.values(objectToInsert));
 
                 const res = await postgreClient.query(insert).catch(reject);
                 i = i + res.rowCount;
