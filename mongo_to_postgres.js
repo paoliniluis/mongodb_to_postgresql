@@ -3,6 +3,7 @@
 const { MongoClient } = require('mongodb');
 const { createWriteStream, createReadStream } = require('fs');
 const { Pool } = require('pg');
+const format = require('pg-format');
 
 const projections = require("./projections.json");
 const { postgres, mongo, batchType } = require("./config.json");
@@ -12,12 +13,12 @@ const { postgres, mongo, batchType } = require("./config.json");
  *
  * Options:
  *
- *  - `doc` a document
+ *  - `doc` a MongoDB document
  *
  * @param {Object} [doc]
  * @return {string}
  */
-let objectToRow = doc => {
+function objectToRow (doc) {
     let row = '';
     Object.keys(doc).forEach(element => {
         row = row + `'${doc[element]}'` + ','
@@ -30,12 +31,12 @@ let objectToRow = doc => {
  *
  * Options:
  *
- *  - `doc` a document
+ *  - `doc` a MongoDB document
  *
  * @param {Object} [doc]
  * @return {string}
  */
-let objectToTable = doc => {
+function objectToTable (doc) {
     let table = ``;
     Object.keys(doc).forEach(element => {
         if (doc[element]) {
@@ -45,16 +46,24 @@ let objectToTable = doc => {
     return table.slice(0,-1);
 }
 
-let objectKeysToColumns = doc => {
-    let row = '';
-    Object.keys(doc).forEach(element => {
-        row = row + `${element}` + ','
-    });
-    return row.slice(0,-1)
+/**
+ * Gets a Document and returns an array of the values
+ *
+ * Options:
+ *
+ *  - `doc` a MongoDB document
+ *
+ * @param {Object} [doc]
+ * @return {Array}
+ */
+function objectToValues(doc) {
+    let arrayToReturn = [];
+    Object.keys(doc).forEach(key => arrayToReturn.push(doc[key]))
+    return arrayToReturn;
 }
 
 /**
- * Connects to MongoDB using a config and pre-stablished projections, returns files on disk and a Promise
+ * Connects to MongoDB using a config and pre-stablished projections, returns files on disk or insertions in a database
  *
  * Options:
  *
@@ -70,7 +79,7 @@ let objectKeysToColumns = doc => {
 async function getFromMongo(db, collection, config) {
     
     // all the neded MongoDB clients and data
-    const mongoClient = new MongoClient(mongo.uri, { useUnifiedTopology: true });
+    const mongoClient = new MongoClient(mongo.url, { useUnifiedTopology: true });
     await mongoClient.connect();
     
     // how many documents we will get? 
@@ -87,12 +96,13 @@ async function getFromMongo(db, collection, config) {
     // we get the client in the pool
     const postgreClient = await pool.connect()
 
-    //create table if not there
+    // create table if not there
     let fields =  objectToTable(projections[collection]);
+
     // postgresql does not like tables with '-' characters, so we convert them to snake case. Also tables should have a 'd' before as they are a dump and should be recreated on each dump
     let sentence = `
-    DROP TABLE IF EXISTS d_${collection.replace('-','_')};
-    CREATE TABLE IF NOT EXISTS d_${collection.replace('-','_')} (${fields});`;
+        DROP TABLE IF EXISTS d_${collection.replace(/-/g,'_')}_new;
+        CREATE TABLE IF NOT EXISTS d_${collection.replace(/-/g,'_')}_new (${fields});`;
     await postgreClient.query(sentence); // something pending is to put the correct data types, here we are using varchars
     
 
@@ -100,7 +110,7 @@ async function getFromMongo(db, collection, config) {
     let fileToWrite = createWriteStream(`${collection}.csv`)
     let header = projections[collection]
     delete header['_id']
-    fileToWrite.write(objectKeysToColumns(header) + '\n')
+    fileToWrite.write(Object.keys(header).join(',') + '\n')
 
     let i = 0; // a counter to get the status
     console.log(`${config} ${collection}`);
@@ -113,14 +123,17 @@ async function getFromMongo(db, collection, config) {
             
             // Mongo can be a bit tricky and not send the whole document, so we will need to identify fields that are not coming and null them so we can make a row in postgres
             Object.keys(objectToInsert).forEach(element => {
-                if (objectToInsert[element]) objectToInsert[element] = chunk[element] ? chunk[element] : null
+                if (objectToInsert[element]) objectToInsert[element] = chunk[element] ? chunk[element] : 'null'
                 delete objectToInsert['_id'] // here I wipe the key _id that comes with every document in MongoDB, if you need it for any reason it can be added
             });
 
             if (config == 'toDB') {
                 // here we make the prepared statement, with the document keys transformed into columns and the values of the document transformed into a row
-                let insert = `INSERT INTO d_${collection.replace('-','_')} (${objectKeysToColumns(objectToInsert)}) VALUES (${objectToRow(objectToInsert)});`
-                const res = await postgreClient.query(insert).catch(reject)
+                // we use pg-format to prevent sql-injections in the columns and fields
+                // also, we keep the old tables alive and then we wipe them at the end to prevent downtime
+                let insert = format(`INSERT INTO d_${collection.replace(/-/g,'_')}_new (%s) VALUES (%L)`, Object.keys(objectToInsert), objectToValues(objectToInsert));
+
+                const res = await postgreClient.query(insert).catch(reject);
                 i = i + res.rowCount;
                 console.log(`Inserted ${i} of ${limit}`);
             }
@@ -133,11 +146,18 @@ async function getFromMongo(db, collection, config) {
 
             if (i == limit) {
                 // we make sure that the accumulator gets to the same level as the limit since otherwise we may cut the stream
-                console.log(`Done ${collection}`);
+                if (config == 'toDB') {
+
+                    const changeName = `
+                        DROP TABLE IF EXISTS d_${collection.replace(/-/g,'_')};
+                        ALTER TABLE d_${collection.replace(/-/g,'_')}_new RENAME TO d_${collection.replace(/-/g,'_')};`
+                    await postgreClient.query(changeName).catch(reject)
+                }
+                console.log(`Done ${collection}`)
                 await postgreClient.release()
-                await pool.end();
+                await pool.end()
                 
-                await mongoClient.close();
+                await mongoClient.close()
 
                 // fire resolve if we insert the rows to a DB, since the file only resolves if it ends writing
                 if (config == 'toDB') resolve();
@@ -149,7 +169,7 @@ async function getFromMongo(db, collection, config) {
             console.log(`error on ${collection}, error details: ${error}`)
             await mongoClient.close();
             await postgreClient.release();
-            await pool.end();
+            await pool.end()
             reject(error);
         })
         
@@ -165,18 +185,16 @@ async function getFromMongo(db, collection, config) {
             fileToWrite.end();
             await mongoClient.close();
             await postgreClient.release();
-            await pool.end();
+            await pool.end()
             reject(error)
         })
     })
 }
 
 async function main() {
-    let yourDB = 'aDB'
     // we loop through the projections to see which collections to get
     Object.keys(projections).forEach(async collection => {
-        await getFromMongo(yourDB,collection, batchType.toDB)
-        .catch(console.dir)
+        await getFromMongo(mongo.db, collection, batchType.toDisk).catch(console.dir)
     })
 }
 

@@ -1,7 +1,8 @@
 {
     "mongo": {
-        "uri":"your-mongodb-connection-url",
-        "cap": 999999
+        "url":"your-mongodb-connection-url",
+        "cap": 999999,
+        "db":"yourDB"
     },
     "postgres": {
         "user": "your-postgresql-user",

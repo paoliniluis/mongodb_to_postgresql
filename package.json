@@ -17,7 +17,8 @@
   },
   "homepage": "https://github.com/paoliniluis/mongodb_to_postgresql#readme",
   "dependencies": {
-    "pg":"8.3.3",
-    "mongodb":"3.6.2"
+    "pg": "8.3.3",
+    "mongodb": "3.6.2",
+    "pg-format": "1.0.4"
   }
 }
